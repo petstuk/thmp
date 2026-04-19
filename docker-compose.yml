@@ -1,0 +1,162 @@
+services:
+  traefik:
+    image: traefik:v3.2
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thmp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thmp}
+      POSTGRES_DB: ${POSTGRES_DB:-thmp}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thmp} -d ${POSTGRES_DB:-thmp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  user-service:
+    build:
+      context: ./backend
+      dockerfile: user_service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      AUDIT_SERVICE_URL: http://audit-service:8000
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/user_service:/app/user_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      audit-service:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.thmp-user.rule=PathPrefix(`/api/v1/auth`) || PathPrefix(`/api/v1/users`) || PathPrefix(`/api/v1/workspaces`)
+      - traefik.http.routers.thmp-user.entrypoints=web
+      - traefik.http.services.thmp-user.loadbalancer.server.port=8000
+
+  hypothesis-service:
+    build:
+      context: ./backend
+      dockerfile: hypothesis_service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      AUDIT_SERVICE_URL: http://audit-service:8000
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/hypothesis_service:/app/hypothesis_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      audit-service:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.thmp-hypothesis.rule=PathPrefix(`/api/v1/hypotheses`) || PathPrefix(`/api/v1/hunts`) || PathPrefix(`/api/v1/evidence`)
+      - traefik.http.routers.thmp-hypothesis.entrypoints=web
+      - traefik.http.services.thmp-hypothesis.loadbalancer.server.port=8000
+
+  audit-service:
+    build:
+      context: ./backend
+      dockerfile: audit_service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+    ports:
+      - "8003:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/audit_service:/app/audit_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.thmp-audit.rule=PathPrefix(`/api/v1/audit`)
+      - traefik.http.routers.thmp-audit.entrypoints=web
+      - traefik.http.services.thmp-audit.loadbalancer.server.port=8000
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    env_file: .env
+    environment:
+      # Same-origin /api → Vite proxies to Traefik (avoids browser → :80 issues on some hosts).
+      VITE_API_BASE_URL: ""
+      DEV_PROXY_TARGET: http://traefik:80
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - traefik
+      - user-service
+
+volumes:
+  pgdata:
