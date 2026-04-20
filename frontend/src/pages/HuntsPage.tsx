@@ -1,0 +1,83 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { AppShell } from '@/components/AppShell'
+import { Card, CardContent } from '@/components/ui/card'
+import { apiFetch, getWorkspaceId } from '@/api'
+import { useAuth } from '@/auth/AuthContext'
+
+type HuntRow = {
+  id: string
+  name: string
+  status: string
+  start_date: string
+  end_date: string | null
+}
+
+function workspaceRole(
+  user: { workspaces: { id: string; role: string }[] },
+  workspaceId: string | null,
+): string | null {
+  if (!workspaceId) return null
+  const w = user.workspaces.find((x) => x.id === workspaceId)
+  return w?.role ?? null
+}
+
+export function HuntsPage() {
+  const { user } = useAuth()
+  const ws = getWorkspaceId()
+  const role = user ? workspaceRole(user, ws) : null
+  const [items, setItems] = useState<HuntRow[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!getWorkspaceId()) return
+    setError(null)
+    try {
+      const data = (await apiFetch('/api/v1/hunts')) as HuntRow[]
+      setItems(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load hunts')
+      setItems([])
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch
+    void load()
+  }, [load])
+
+  if (!user) {
+    return (
+      <div className="px-4 py-16 text-center">
+        <Link to="/login" className="text-primary underline-offset-4 hover:underline">
+          Sign in
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <AppShell workspaceRole={role} onWorkspaceChange={() => void load()}>
+      <h1 className="mb-6 text-2xl font-semibold">Hunts</h1>
+      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+      <ul className="space-y-3 text-left">
+        {items.map((h) => (
+          <li key={h.id}>
+            <Card>
+              <CardContent className="py-4">
+                <div className="font-medium text-foreground">{h.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {h.status} · starts {new Date(h.start_date).toLocaleDateString()}
+                  {h.end_date ? ` · ends ${new Date(h.end_date).toLocaleDateString()}` : ''}
+                </div>
+              </CardContent>
+            </Card>
+          </li>
+        ))}
+      </ul>
+      {items.length === 0 && !error ? (
+        <p className="mt-6 text-center text-sm text-muted-foreground">No hunts in this workspace yet.</p>
+      ) : null}
+    </AppShell>
+  )
+}

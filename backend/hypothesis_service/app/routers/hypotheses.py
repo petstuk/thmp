@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.attack_validate import ensure_technique_ids_exist
 from app.audit_emit import emit_audit
 from app.deps import get_db, get_workspace_context, require_writer
 from app.fsm import assert_transition_allowed
@@ -27,6 +28,7 @@ async def create_hypothesis(
 ) -> HypothesisOut:
     payload, workspace_id, role = ctx
     require_writer(role)
+    await ensure_technique_ids_exist(body.attack_technique_ids)
     owner = body.owner_id or payload.sub
     h = Hypothesis(
         title=body.title,
@@ -62,9 +64,23 @@ async def create_hypothesis(
 async def list_hypotheses(
     ctx: tuple[TokenPayload, UUID, str] = Depends(get_workspace_context),
     db: AsyncSession = Depends(get_db),
+    filter_status: str | None = Query(default=None, alias="status"),
+    source_type: str | None = Query(default=None),
+    triage_queue: bool = Query(default=False),
+    integration_queue: bool = Query(default=False),
 ) -> list[HypothesisOut]:
     _, workspace_id, _role = ctx
-    q = select(Hypothesis).where(Hypothesis.workspace_id == workspace_id).order_by(Hypothesis.created_at.desc())
+    q = select(Hypothesis).where(Hypothesis.workspace_id == workspace_id)
+    if integration_queue:
+        q = q.where(Hypothesis.status == "draft", Hypothesis.source_type == "integration")
+    elif triage_queue:
+        q = q.where(Hypothesis.status == "draft", Hypothesis.source_type != "manual")
+    else:
+        if filter_status is not None:
+            q = q.where(Hypothesis.status == filter_status)
+        if source_type is not None:
+            q = q.where(Hypothesis.source_type == source_type)
+    q = q.order_by(Hypothesis.created_at.desc())
     rows = (await db.execute(q)).scalars().all()
     return [hypothesis_to_out(h) for h in rows]
 
@@ -115,7 +131,7 @@ async def patch_hypothesis(
         )
         h.status = body.status
         if body.status in TERMINAL:
-            h.closed_at = datetime.now(tz=UTC)
+            h.closed_at = datetime.now(tz=timezone.utc)
 
     if body.title is not None:
         h.title = body.title
@@ -128,6 +144,7 @@ async def patch_hypothesis(
     if body.source_ref is not None:
         h.source_ref = body.source_ref
     if body.attack_technique_ids is not None:
+        await ensure_technique_ids_exist(body.attack_technique_ids)
         h.attack_technique_ids = body.attack_technique_ids
     if body.tags is not None:
         h.tags = body.tags

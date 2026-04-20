@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import evidence, hypotheses, hunts
+from app.routers import evidence, hypotheses, hunts, internal_hypotheses
 
 app = FastAPI(title="THMP Hypothesis Service", version="0.1.0")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(hypotheses.router, prefix="/api/v1")
+app.include_router(internal_hypotheses.router, prefix="/api/v1")
 app.include_router(evidence.router, prefix="/api/v1")
 app.include_router(hunts.router, prefix="/api/v1")
 

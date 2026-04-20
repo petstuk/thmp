@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thmp-connector-example-webhook"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "thmp-cdk",
+]
+
+[project.entry-points."thmp.connectors"]
+example_webhook = "example_webhook.adapter:load_adapter"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["example_webhook*"]

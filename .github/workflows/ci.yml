@@ -19,11 +19,19 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e ../thmp_common -e .
+          pip install -e ../attack_service
           pip install pytest ruff
       - name: Ruff
-        run: ruff check ../thmp_common ../user_service/app ../audit_service/app ../hypothesis_service/app
+        run: |
+          ruff check ../thmp_common ../thmp_cdk ../user_service/app ../audit_service/app \
+            ../hypothesis_service/app ../hypothesis_service/tests ../attack_service/app ../attack_service/tests \
+            ../ingestion_service/app ../../connectors/example_webhook
       - name: Pytest
-        run: pytest -q
+        run: |
+          pytest -q
+          cd ../attack_service && pytest -q
+          cd ../thmp_cdk && pytest -q
+          cd ../../connectors/example_webhook && pytest -q
 
   frontend:
     runs-on: ubuntu-latest
@@ -55,7 +63,9 @@ jobs:
           for i in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8001/health/live >/dev/null 2>&1 \
               && curl -fsS http://127.0.0.1:8002/health/live >/dev/null 2>&1 \
-              && curl -fsS http://127.0.0.1:8003/health/live >/dev/null 2>&1; then
+              && curl -fsS http://127.0.0.1:8003/health/live >/dev/null 2>&1 \
+              && curl -fsS http://127.0.0.1:8004/health/live >/dev/null 2>&1 \
+              && curl -fsS http://127.0.0.1:8005/health/live >/dev/null 2>&1; then
               break
             fi
             sleep 2
@@ -63,6 +73,8 @@ jobs:
           curl -fsS http://127.0.0.1:8001/health/live
           curl -fsS http://127.0.0.1:8002/health/live
           curl -fsS http://127.0.0.1:8003/health/live
+          curl -fsS http://127.0.0.1:8004/health/live
+          curl -fsS http://127.0.0.1:8005/health/live
           sleep 5
       - name: Smoke API (Traefik)
         run: SMOKE_BASE_URL=http://127.0.0.1 python3 scripts/smoke_api.py

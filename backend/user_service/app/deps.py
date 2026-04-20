@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated
 from uuid import UUID
 
@@ -57,6 +58,12 @@ def require_workspace_role(user: User, workspace_id: UUID, allowed: set[str]) ->
     if role not in allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
     return role
+
+
+def require_internal_token(x_internal_token: Annotated[str | None, Header()] = None) -> None:
+    expected = os.environ.get("THMP_INTERNAL_API_SECRET", "")
+    if not expected or x_internal_token != expected:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid internal token")
 
 
 async def load_membership(db: AsyncSession, user_id: UUID, workspace_id: UUID) -> WorkspaceMembership | None:

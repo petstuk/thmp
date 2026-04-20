@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -27,7 +27,7 @@ def create_access_token(
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
-    now = datetime.now(tz=UTC)
+    now = datetime.now(tz=timezone.utc)
     exp = now + timedelta(minutes=settings.access_token_minutes)
     claims: dict[str, Any] = {
         "sub": str(payload.sub),
@@ -49,7 +49,7 @@ def create_refresh_token(
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
-    now = datetime.now(tz=UTC)
+    now = datetime.now(tz=timezone.utc)
     exp = now + timedelta(days=settings.refresh_token_days)
     claims: dict[str, Any] = {
         "sub": str(user_id),

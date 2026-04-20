@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { apiFetch, getWorkspaceId, setWorkspaceId } from '../api'
-import { useAuth } from '../auth/AuthContext'
+import { AppShell } from '@/components/AppShell'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { apiFetch, getWorkspaceId } from '@/api'
+import { useAuth } from '@/auth/AuthContext'
+import { TechniqueTypeahead, type TechniqueEntry } from '@/components/TechniqueTypeahead'
 
 type Hypothesis = {
   id: string
@@ -12,10 +17,11 @@ type Hypothesis = {
 }
 
 export function HypothesesPage() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [items, setItems] = useState<Hypothesis[]>([])
   const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState('')
+  const [techniqueEntries, setTechniqueEntries] = useState<TechniqueEntry[]>([])
   const load = useCallback(async () => {
     if (!getWorkspaceId()) return
     setError(null)
@@ -28,6 +34,7 @@ export function HypothesesPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch
     void load()
   }, [load])
 
@@ -37,9 +44,14 @@ export function HypothesesPage() {
     try {
       await apiFetch('/api/v1/hypotheses', {
         method: 'POST',
-        body: JSON.stringify({ title, description: '' }),
+        body: JSON.stringify({
+          title,
+          description: '',
+          attack_technique_ids: techniqueEntries.length ? techniqueEntries.map((e) => e.id) : undefined,
+        }),
       })
       setTitle('')
+      setTechniqueEntries([])
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed')
@@ -49,81 +61,61 @@ export function HypothesesPage() {
   if (!user) {
     return (
       <div className="px-4 py-16 text-center">
-        <Link to="/login" className="text-thmp-accent hover:underline">
+        <Link to="/login" className="text-primary underline-offset-4 hover:underline">
           Sign in
         </Link>
       </div>
     )
   }
 
+  const workspaceId = getWorkspaceId() || ''
+  const workspaceRole = user.workspaces.find((w) => w.id === workspaceId)?.role ?? null
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Hypotheses</h1>
-          <p className="text-sm text-thmp-muted">{user.email}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-thmp-muted">
-            Workspace{' '}
-            <select
-              className="ml-1 rounded border border-thmp-border bg-thmp-bg px-2 py-1 text-thmp-fg"
-              value={getWorkspaceId() || ''}
-              onChange={(e) => {
-                setWorkspaceId(e.target.value)
-                void load()
-              }}
-            >
-              {user.workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} ({w.role})
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="rounded-md border border-thmp-border px-3 py-1 text-sm hover:bg-thmp-border/30"
-          >
-            Log out
-          </button>
-        </div>
+    <AppShell workspaceRole={workspaceRole} onWorkspaceChange={() => void load()}>
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold">Hypotheses</h1>
+        <p className="text-sm text-muted-foreground">{user.email}</p>
       </header>
 
-      <form onSubmit={onCreate} className="mb-8 flex flex-col gap-2 sm:flex-row">
-        <input
-          className="flex-1 rounded-md border border-thmp-border bg-thmp-bg px-3 py-2"
-          placeholder="New hypothesis title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          className="rounded-md bg-thmp-accent px-4 py-2 font-medium text-white hover:bg-thmp-accent-hover"
-        >
-          Add
-        </button>
+      <form onSubmit={onCreate} className="mb-8 flex flex-col gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            className="flex-1"
+            placeholder="New hypothesis title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <Button type="submit">Add</Button>
+        </div>
+        <TechniqueTypeahead entries={techniqueEntries} onChange={setTechniqueEntries} />
       </form>
 
-      {error ? <p className="mb-4 text-sm text-red-400">{error}</p> : null}
+      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
 
       <ul className="space-y-3 text-left">
         {items.map((h) => (
-          <li key={h.id} className="rounded-lg border border-thmp-border px-4 py-3">
-            <Link to={`/hypotheses/${h.id}`} className="font-medium text-thmp-fg hover:text-thmp-accent">
-              {h.title}
-            </Link>
-            <div className="text-xs text-thmp-muted">
-              {h.status} · {h.severity}
-            </div>
+          <li key={h.id}>
+            <Card>
+              <CardContent className="py-4">
+                <Link
+                  to={`/hypotheses/${h.id}`}
+                  className="font-medium text-foreground hover:text-primary"
+                >
+                  {h.title}
+                </Link>
+                <div className="text-xs text-muted-foreground">
+                  {h.status} · {h.severity}
+                </div>
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
       {items.length === 0 ? (
-        <p className="mt-6 text-center text-sm text-thmp-muted">No hypotheses yet.</p>
+        <p className="mt-6 text-center text-sm text-muted-foreground">No hypotheses yet.</p>
       ) : null}
-    </div>
+    </AppShell>
   )
 }

@@ -10,8 +10,9 @@
 
 ```bash
 cd backend && source .venv/bin/activate  # after creating venv per docs/development.md
-ruff check thmp_common user_service/app audit_service/app hypothesis_service/app
+ruff check thmp_common user_service/app audit_service/app hypothesis_service/app attack_service/app attack_service/tests
 cd hypothesis_service && pytest -q
+cd ../attack_service && pytest -q
 cd ../../frontend && npx tsc -b --noEmit
 # optional full bundle (requires working Vite toolchain): npm run build
 ```

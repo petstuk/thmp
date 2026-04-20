@@ -41,27 +41,29 @@ The callable MUST return a subclass of `ConnectorAdapter` (see below). The platf
 
 ## Core interface
 
-Connectors SHOULD depend on the published **Connector Development Kit (CDK)** package (`thmp-cdk`) for base types. Until CDK is published, implementations MAY copy the type stubs from this section.
+Connectors SHOULD depend on the published **Connector Development Kit (CDK)** package (`thmp-cdk`, import `thmp_cdk`) for base types and validation helpers.
+
+```python
+from thmp_cdk import ConnectorAdapter, NormalisedBatch, NormalisedHypothesis
+```
+
+`NormalisedBatch` carries `hypotheses` as structured models (plus optional `evidence` / `iocs` as `dict` lists for future platform fields). The platform serialises hypothesis entries to JSON-compatible dicts when persisting.
 
 ### `ConnectorAdapter`
 
+The CDK defines `ConnectorAdapter` and `NormalisedBatch` in code; the normative contract is:
+
 ```python
-from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from typing import Any
 from uuid import UUID
 
-class NormalisedBatch:
-    """Container for zero or more normalised objects in one ingestion event."""
+from thmp_cdk import ConnectorAdapter, NormalisedBatch
 
-    hypotheses: list[dict[str, Any]]
-    evidence: list[dict[str, Any]]
-    iocs: list[dict[str, Any]]  # optional standalone IOCs for evidence store
+# Subclass ConnectorAdapter; implement normalise() -> NormalisedBatch
+class ExampleAdapter(ConnectorAdapter):
+    connector_id = "example"
+    version = "0.1.0"
 
-class ConnectorAdapter(ABC):
-    connector_id: str  # stable snake_case id, e.g. "elastic_scm"
-    version: str       # semver of this package
-
-    @abstractmethod
     def normalise(
         self,
         raw_payload: bytes | dict[str, Any],
@@ -82,7 +84,7 @@ class ConnectorAdapter(ABC):
 
 1. **Output shapes** MUST match the field names and enum values in [docs/architecture/data-model.md](docs/architecture/data-model.md) for `Hypothesis`, `Evidence`, and IOC JSONB items (`ip`, `domain`, `hash`, `url`, `email`).
 2. **IDs**: Do not invent primary keys. Omit `id` on create; the platform assigns UUIDs. Optional `external_id` MAY be placed under `metadata` or `source_ref` for idempotency.
-3. **`source_type`** on Hypothesis MUST be one of: `manual`, `intel_feed`, `scm`, `siem`, `vuln_scanner`.
+3. **`source_type`** on Hypothesis MUST be one of: `manual`, `intel_feed`, `scm`, `siem`, `vuln_scanner`, `integration` (generic connector-driven ingest).
 4. **`workspace_id`** MUST be echoed on every top-level object the platform persists from this batch (the platform may inject it if omitted; connectors SHOULD set it explicitly).
 5. **Severity mapping** MUST map vendor severities to: `informational`, `low`, `medium`, `high`, `critical`.
 6. **Idempotency**: Use `source_ref` (JSONB) to carry vendor event IDs so the ingestion layer can deduplicate.
@@ -121,7 +123,7 @@ connector_spec = "1.0.0"
 - [ ] Entry point registered under `thmp.connectors`.
 - [ ] `normalise()` produces only documented enums and field types.
 - [ ] README documents required `integration_config` keys and OAuth/API scopes.
-- [ ] Integration tests using CDK mock platform server (when available).
+- [ ] Integration tests using CDK (`thmp_cdk.testing.MockBatchApplier` or equivalent); first-party [connectors/example_webhook](connectors/example_webhook) is the reference.
 - [ ] Licence compatible with Apache-2.0 project default.
 
 ## References

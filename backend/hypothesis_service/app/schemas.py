@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 HypothesisStatus = Literal["draft", "active", "in_hunt", "validated", "closed", "archived"]
 Severity = Literal["informational", "low", "medium", "high", "critical"]
-SourceType = Literal["manual", "intel_feed", "scm", "siem", "vuln_scanner"]
+SourceType = Literal["manual", "intel_feed", "scm", "siem", "vuln_scanner", "integration"]
 
 
 class HypothesisCreate(BaseModel):
@@ -22,6 +22,24 @@ class HypothesisCreate(BaseModel):
     due_date: datetime | None = None
     metadata: dict[str, Any] | None = None
     owner_id: UUID | None = None
+
+
+class InternalHypothesisIngestItem(BaseModel):
+    workspace_id: UUID
+    created_by: UUID
+    title: str = Field(max_length=256)
+    description: str = ""
+    severity: Severity = "medium"
+    source_type: SourceType
+    source_ref: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    dedupe_key: str = Field(max_length=512)
+    connector_id: str = Field(max_length=64)
+
+
+class InternalIngestItemResult(BaseModel):
+    id: UUID
+    created: bool
 
 
 class HypothesisPatch(BaseModel):

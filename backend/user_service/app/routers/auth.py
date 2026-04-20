@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
@@ -96,9 +96,9 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> T
             select(RefreshToken).where(RefreshToken.jti == jti, RefreshToken.user_id == user_id)
         )
     ).scalar_one_or_none()
-    if not row or row.revoked_at is not None or row.expires_at < datetime.now(tz=UTC):
+    if not row or row.revoked_at is not None or row.expires_at < datetime.now(tz=timezone.utc):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token invalid")
-    row.revoked_at = datetime.now(tz=UTC)
+    row.revoked_at = datetime.now(tz=timezone.utc)
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User invalid")
@@ -123,7 +123,7 @@ async def _issue_tokens(db: AsyncSession, user: User) -> TokenResponse:
     )
     jti = uuid.uuid4().hex
     refresh = create_refresh_token(user.id, jti, settings=settings)
-    exp = datetime.now(tz=UTC) + timedelta(days=settings.refresh_token_days)
+    exp = datetime.now(tz=timezone.utc) + timedelta(days=settings.refresh_token_days)
     db.add(RefreshToken(user_id=user.id, jti=jti, expires_at=exp))
     await db.commit()
     return TokenResponse(

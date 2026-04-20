@@ -72,6 +72,7 @@ Status transitions are enforced by application rules (see build plan Section 6.1
 | `scm` | Elastic Supply Chain Monitor |
 | `siem` | SIEM / detection platform |
 | `vuln_scanner` | Vulnerability management feed |
+| `integration` | Generic connector / webhook ingestion |
 
 ### Severity
 

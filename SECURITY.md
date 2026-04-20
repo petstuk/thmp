@@ -35,3 +35,7 @@ In scope: the THMP application code, official container images published by this
 ## Security-related configuration
 
 Operators should follow the deployment guides (when published) for TLS, secrets management, network policies, and audit log retention. Reports about insecure **default** configuration in official deployment manifests are in scope.
+
+### Internal APIs and ingestion
+
+Service-to-service calls use **`THMP_INTERNAL_API_SECRET`** (`X-Internal-Token`). Treat it like a bearer secret: restrict network paths, rotate regularly, and **do not** expose internal or ingestion URLs to untrusted clients. Public webhooks should validate **vendor-specific** signatures (or mTLS) at the edge before invoking ingestion; see [docs/adr/0006-ingestion-auth-and-dedupe.md](docs/adr/0006-ingestion-auth-and-dedupe.md).
