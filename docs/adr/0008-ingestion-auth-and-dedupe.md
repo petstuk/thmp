@@ -1,4 +1,4 @@
-# ADR 0006: Ingestion service authentication and hypothesis deduplication
+# ADR 0008: Ingestion service authentication and hypothesis deduplication
 
 ## Status
 

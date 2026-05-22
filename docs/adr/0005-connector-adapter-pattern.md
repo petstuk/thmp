@@ -16,7 +16,7 @@ Dozens of external systems (SIEM, TAXII, SCM, ITSM) must integrate without forki
 - **Execution:** Connectors run as separate Python packages (pull workers or webhook handlers) invoked by the platform ingestion layer.
 - **Normalisation:** All external payloads map to the core Hypothesis, Evidence, and IOC shapes in the data model; vendors MUST NOT leak proprietary field names into persisted core columns except via `metadata` / `source_ref` JSONB.
 - **CDK:** The **`thmp-cdk`** package ([backend/thmp_cdk/](../../backend/thmp_cdk/)) provides base types (`ConnectorAdapter`, `NormalisedBatch`), validation helpers, and `MockBatchApplier` for offline tests. Import as `thmp_cdk` (see [connector-spec.md](../../connector-spec.md)).
-- **Runtime ingest:** The ingestion service loads connectors via entry points, validates batches, and creates draft hypotheses; see [ADR 0006: Ingestion auth and dedupe](0006-ingestion-auth-and-dedupe.md).
+- **Runtime ingest:** The ingestion service loads connectors via entry points, validates batches, and creates draft hypotheses; see [ADR 0008: Ingestion auth and dedupe](0008-ingestion-auth-and-dedupe.md).
 
 ## Consequences
 

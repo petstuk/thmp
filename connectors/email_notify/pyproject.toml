@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thmp-connector-email-notify"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["thmp-cdk"]
+
+[project.entry-points."thmp.connectors"]
+email_smtp = "email_notify.adapter:EmailSmtpAdapter"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["email_notify*"]

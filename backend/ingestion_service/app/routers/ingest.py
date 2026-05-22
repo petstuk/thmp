@@ -177,3 +177,42 @@ async def ingest_batch(
     )
 
     return IngestBatchResponse(hypotheses=outcomes, skipped_hypotheses=skipped)
+
+
+class TestConnectorRequest(BaseModel):
+    workspace_id: UUID
+    integration_id: UUID
+
+
+@router.post("/internal/test-connector")
+async def test_connector_internal(
+    body: TestConnectorRequest,
+    _: None = Depends(require_internal_token),
+) -> dict[str, bool]:
+    """Load connector adapter and run optional ``health_check`` against stored integration config."""
+    user_base = os.environ.get("USER_SERVICE_URL", "").rstrip("/")
+    secret = os.environ.get("THMP_INTERNAL_API_SECRET", "")
+    if not user_base or not secret:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "USER_SERVICE_URL and THMP_INTERNAL_API_SECRET must be set",
+        )
+    integ_url = f"{user_base}/api/v1/internal/integrations/by-id/{body.integration_id}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        integ_resp = await client.get(integ_url, headers={"X-Internal-Token": secret})
+        if integ_resp.status_code == 404:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Integration not found or disabled")
+        integ_resp.raise_for_status()
+        integ = integ_resp.json()
+    if UUID(integ["workspace_id"]) != body.workspace_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "integration workspace mismatch")
+    connector_id = str(integ["connector_id"])
+    adapter = load_connector_adapter(connector_id)
+    cfg = integ.get("config") or {}
+    try:
+        ok = bool(adapter.health_check(cfg))
+    except Exception as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if not ok:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "health_check returned false")
+    return {"ok": True}

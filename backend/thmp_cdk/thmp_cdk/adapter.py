@@ -13,6 +13,10 @@ class ConnectorAdapter(ABC):
     connector_id: str
     version: str
 
+    def health_check(self, integration_config: dict[str, Any]) -> bool:
+        """Return True if non-secret configuration looks usable (optional hook)."""
+        return True
+
     @abstractmethod
     def normalise(
         self,

@@ -66,6 +66,24 @@ def require_internal_token(x_internal_token: Annotated[str | None, Header()] = N
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid internal token")
 
 
+async def require_admin(
+    authorization: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db),
+) -> TokenPayload:
+    """Require any workspace admin claim on the token."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        from thmp_common import decode_access_token
+        payload = decode_access_token(token)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from exc
+    if not any(w.role in {"admin"} for w in payload.workspaces):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin role required")
+    return payload
+
+
 async def load_membership(db: AsyncSession, user_id: UUID, workspace_id: UUID) -> WorkspaceMembership | None:
     q = (
         select(WorkspaceMembership)

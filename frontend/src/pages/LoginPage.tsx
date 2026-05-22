@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '../auth/AuthContext'
+import { appDisplayName } from '@/lib/branding'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -31,11 +32,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
+    <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-4 py-12">
       <Card>
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>THMP workspace access.</CardDescription>
+          <CardTitle className="text-[22px] tracking-tight">Sign in</CardTitle>
+          <CardDescription>
+            {appDisplayName} workspace access.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4 text-left">

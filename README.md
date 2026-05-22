@@ -21,8 +21,11 @@ The build plan also describes additional components (e.g. dedicated search tier,
 | **Hypotheses, hunts, evidence, findings** | CRUD and FSM transitions (`hypothesis-service`, PostgreSQL) |
 | **Audit** | Internal event ingestion + admin-visible event list (`audit-service`) |
 | **ATT&CK catalogue** | STIX sync, techniques/tactics, Navigator layer JSON export (`attack-service`) |
-| **Integrations (Phase 3)** | Per-workspace integration config, **`thmp-cdk`**, reference `example_webhook` connector, **`ingestion-service`** (`POST /api/v1/ingest/batch` on port **8005** in Compose), internal dedupe, UI **Ingestion** + **Integrations** pages |
-| **Frontend** | React (Vite, TypeScript, Tailwind/shadcn-style UI) |
+| **Reporting (Phase 5)** | Templates, async report jobs (PDF + STIX), export history, schedules (`reporting-service`) |
+| **Integrations (Phase 3)** | Per-workspace integration config (encrypted `secret_ref` when configured), **`thmp-cdk`**, first-party connectors under `connectors/`, **`ingestion-service`** (`POST /api/v1/ingest/batch` on port **8005** in Compose), internal dedupe, **Test connection** from Integrations UI |
+| **Object storage & search** | MinIO/S3 evidence store; OpenSearch cross-entity **`/api/v1/search`** |
+| **Auth** | JWT + optional **OIDC** (JIT provisioning) |
+| **Frontend** | Single SPA: hypotheses, hunts, kanban, evidence hub, ingestion triage, ATT&CK navigator + suggest, integrations, global search |
 
 **Stack in this repo:** Python 3.12, FastAPI, SQLAlchemy/asyncpg, PostgreSQL 16, Redis 7, Node 20.
 
@@ -30,7 +33,7 @@ Detailed setup, env vars, ingest URLs, and migrations: **[docs/development.md](d
 
 Connector contract: **[connector-spec.md](connector-spec.md)**.
 
-Architecture decisions: **[docs/adr/](docs/adr/)** (including connector adapter pattern, ATT&CK service, ingestion auth/dedupe).
+Architecture decisions: **[docs/adr/](docs/adr/)** (connector adapter pattern, ATT&CK service, ingestion auth/dedupe **0008**, single SPA **0009**, object storage + search **0010**, OIDC **0011**).
 
 Security reporting: **[SECURITY.md](SECURITY.md)**.
 
@@ -41,11 +44,16 @@ cp .env.example .env
 # Edit secrets in .env for anything beyond local dev defaults.
 
 docker compose up --build
+
+# Optional: ATT&CK suggest sidecar (heavy ML deps)
+# docker compose --profile ml up -d attack-suggest-service
 ```
 
-- **API (via Traefik):** `http://localhost` (port 80)
+- **API (via Traefik):** `http://localhost` (port 80, `/api/v1/...` routes only)
 - **UI:** `http://localhost:5173` (Vite dev server; proxies `/api` to Traefik)
 - **Direct service docs (OpenAPI):** see [docs/development.md](docs/development.md) (ports 8001–8005)
+
+If you open `http://localhost:80/` directly for SPA routes, Traefik returns 404 by design; use `http://localhost:5173`.
 
 Smoke test against a running stack:
 
@@ -62,15 +70,22 @@ SMOKE_BASE_URL=http://127.0.0.1 python3 scripts/smoke_api.py
 | `backend/user_service/` | Auth, users, workspaces, **integrations** API |
 | `backend/hypothesis_service/` | Hypotheses, hunts, evidence, findings; **internal ingest** |
 | `backend/attack_service/` | ATT&CK STIX sync and catalogue APIs |
+| `backend/reporting_service/` | Reporting templates, jobs, schedules; PDF/STIX exports |
 | `backend/audit_service/` | Audit log |
 | `backend/ingestion_service/` | Batch ingest (connectors → hypotheses) |
-| `connectors/` | First-party connector packages (e.g. `example_webhook`) |
+| `connectors/` | First-party connector packages (webhook, SIEM, TI, notifications, …) |
 | `frontend/` | Web UI |
 | `docs/` | Development guide, ADRs, architecture notes |
 
 ## Contributing
 
 See **[docs/contributing.md](docs/contributing.md)** and **[SECURITY.md](SECURITY.md)** for vulnerability reporting.
+
+## What’s next (Phase 5+)
+
+- Harden connector OAuth device flows and vendor-specific webhook replay protection in production.
+- Background workers (Celery/Redis) for ingestion back-pressure and search index repair.
+- SOAR playbook templates and optional Kubernetes Helm charts.
 
 ## License
 

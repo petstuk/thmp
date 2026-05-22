@@ -48,6 +48,13 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceOut]
 
 
+class WorkspaceMemberOut(BaseModel):
+    id: UUID
+    email: str
+    display_name: str
+    role: str
+
+
 class IntegrationConfigCreate(BaseModel):
     connector_id: str = Field(min_length=1, max_length=64)
     name: str | None = Field(default=None, max_length=256)

@@ -1,16 +1,23 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
+import { AttackNavigatorPage } from './pages/AttackNavigatorPage'
+import { AuditLogPage } from './pages/AuditLogPage'
+import { IdentityProvidersPage } from './pages/IdentityProvidersPage'
 import { EvidenceHubPage } from './pages/EvidenceHubPage'
 import { FindingsPage } from './pages/FindingsPage'
 import { HypothesisDetailPage } from './pages/HypothesisDetailPage'
 import { HypothesesPage } from './pages/HypothesesPage'
 import { IngestionQueuePage } from './pages/IngestionQueuePage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
+import { HuntDetailPage } from './pages/HuntDetailPage'
 import { HuntsPage } from './pages/HuntsPage'
+import { KanbanPage } from './pages/KanbanPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { LoginPage } from './pages/LoginPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ReportingPage } from './pages/ReportingPage'
+import { SearchResultsPage } from './pages/SearchResultsPage'
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -73,6 +80,30 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/hunts/:id"
+        element={
+          <Protected>
+            <HuntDetailPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/board"
+        element={
+          <Protected>
+            <KanbanPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <Protected>
+            <NotificationsPage />
+          </Protected>
+        }
+      />
+      <Route
         path="/evidence"
         element={
           <Protected>
@@ -93,6 +124,38 @@ function AppRoutes() {
         element={
           <Protected>
             <ReportingPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/search"
+        element={
+          <Protected>
+            <SearchResultsPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/navigator"
+        element={
+          <Protected>
+            <AttackNavigatorPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/audit"
+        element={
+          <Protected>
+            <AuditLogPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/admin/identity-providers"
+        element={
+          <Protected>
+            <IdentityProvidersPage />
           </Protected>
         }
       />

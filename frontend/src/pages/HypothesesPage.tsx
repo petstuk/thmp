@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { PageHeader } from '@/components/thmp/PageHeader'
+import { ThmpCard } from '@/components/thmp/ThmpCard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { StatusBadge, SeverityBadge } from '@/components/ThreatBadges'
 import { apiFetch, getWorkspaceId } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
 import { TechniqueTypeahead, type TechniqueEntry } from '@/components/TechniqueTypeahead'
@@ -73,10 +75,7 @@ export function HypothesesPage() {
 
   return (
     <AppShell workspaceRole={workspaceRole} onWorkspaceChange={() => void load()}>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">Hypotheses</h1>
-        <p className="text-sm text-muted-foreground">{user.email}</p>
-      </header>
+      <PageHeader title="Hypotheses" subtitle={user.email} />
 
       <form onSubmit={onCreate} className="mb-8 flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -97,19 +96,20 @@ export function HypothesesPage() {
       <ul className="space-y-3 text-left">
         {items.map((h) => (
           <li key={h.id}>
-            <Card>
-              <CardContent className="py-4">
+            <ThmpCard>
+              <div>
                 <Link
                   to={`/hypotheses/${h.id}`}
                   className="font-medium text-foreground hover:text-primary"
                 >
                   {h.title}
                 </Link>
-                <div className="text-xs text-muted-foreground">
-                  {h.status} · {h.severity}
+                <div className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                  <StatusBadge value={h.status} />
+                  <SeverityBadge value={h.severity} />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </ThmpCard>
           </li>
         ))}
       </ul>

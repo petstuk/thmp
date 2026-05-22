@@ -12,9 +12,11 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -40,9 +42,12 @@ def http_json(
     *,
     data: dict | None = None,
     headers: dict[str, str] | None = None,
+    extra_headers: dict[str, str] | None = None,
     timeout: int = 60,
 ) -> tuple[int, object | None]:
     h = dict(headers or {})
+    if extra_headers:
+        h.update(extra_headers)
     body: bytes | None = None
     if data is not None:
         body = json.dumps(data).encode()
@@ -60,6 +65,22 @@ def http_json(
             detail: object = json.loads(raw)
         except json.JSONDecodeError:
             detail = raw
+        raise RuntimeError(f"HTTP {e.code} {method} {url}: {detail}") from None
+
+
+def http_bytes(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: int = 60,
+) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, headers=headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="ignore")
         raise RuntimeError(f"HTTP {e.code} {method} {url}: {detail}") from None
 
 
@@ -192,9 +213,118 @@ def main() -> None:
     if not isinstance(techniques, list):
         raise SystemExit("navigator-layer missing techniques array")
 
+    start_iso = datetime.now(timezone.utc).isoformat()
+    h_status, hunt = http_json(
+        "POST",
+        f"{base}/api/v1/hunts",
+        data={
+            "name": "Smoke hunt",
+            "description": "Created by smoke_api",
+            "lead_id": user_id,
+            "start_date": start_iso,
+            "hypothesis_ids": [hid],
+        },
+        headers=ws_headers,
+    )
+    if h_status not in (200, 201) or not isinstance(hunt, dict):
+        raise SystemExit(f"hunt create failed: {h_status} {hunt}")
+    hunt_id = str(hunt["id"])
+    updated_at = str(hunt["updated_at"])
+
+    h2_status, hunt2 = http_json(
+        "PATCH",
+        f"{base}/api/v1/hunts/{hunt_id}",
+        data={"status": "active", "transition_comment": "Activate for smoke test"},
+        headers=ws_headers,
+        extra_headers={"If-Match": updated_at},
+    )
+    if h2_status != 200 or not isinstance(hunt2, dict):
+        raise SystemExit(f"hunt patch failed: {h2_status} {hunt2}")
+
+    t_status, _tl = http_json(
+        "POST",
+        f"{base}/api/v1/hunts/{hunt_id}/timeline",
+        data={"body": "Smoke timeline note"},
+        headers=ws_headers,
+    )
+    if t_status not in (200, 201):
+        raise SystemExit(f"hunt timeline note failed: {t_status} {_tl}")
+
+    act_status, act = http_json(
+        "GET",
+        f"{base}/api/v1/hypotheses/{hid}/activity",
+        headers=ws_headers,
+    )
+    if act_status != 200 or not isinstance(act, list) or len(act) < 1:
+        raise SystemExit(f"hypothesis activity failed: {act_status} {act}")
+
+    try:
+        http_json(
+            "PATCH",
+            f"{base}/api/v1/hunts/{hunt_id}",
+            data={"name": "Should not apply"},
+            headers=ws_headers,
+            extra_headers={"If-Match": "1970-01-01T00:00:00+00:00"},
+        )
+    except RuntimeError as e:
+        if "HTTP 409" not in str(e):
+            raise SystemExit(f"expected 409 on stale If-Match, got: {e}") from e
+    else:
+        raise SystemExit("expected 409 on stale If-Match for hunt PATCH")
+
+    report_status, report_job = http_json(
+        "POST",
+        f"{base}/api/v1/reports/jobs",
+        data={"report_type": "coverage", "params": {"period_days": 90}},
+        headers=ws_headers,
+    )
+    if report_status not in (200, 201) or not isinstance(report_job, dict):
+        raise SystemExit(f"report job create failed: {report_status} {report_job}")
+    report_job_id = str(report_job["id"])
+
+    final_job: dict | None = None
+    for _ in range(30):
+        j_status, j_payload = http_json(
+            "GET",
+            f"{base}/api/v1/reports/jobs/{report_job_id}",
+            headers=ws_headers,
+        )
+        if j_status != 200 or not isinstance(j_payload, dict):
+            raise SystemExit(f"report job fetch failed: {j_status} {j_payload}")
+        if j_payload.get("status") == "failed":
+            raise SystemExit(f"report job failed: {j_payload.get('error')}")
+        if j_payload.get("status") == "succeeded":
+            final_job = j_payload
+            break
+        time.sleep(2)
+    if final_job is None:
+        raise SystemExit("report job did not finish in time")
+
+    pdf_status, pdf_bytes = http_bytes(
+        "GET",
+        f"{base}/api/v1/reports/jobs/{report_job_id}/download?format=pdf",
+        headers=ws_headers,
+    )
+    if pdf_status != 200 or not pdf_bytes.startswith(b"%PDF"):
+        raise SystemExit("report PDF download failed or is not a PDF")
+    stix_status, stix_bytes = http_bytes(
+        "GET",
+        f"{base}/api/v1/reports/jobs/{report_job_id}/download?format=stix",
+        headers=ws_headers,
+    )
+    if stix_status != 200:
+        raise SystemExit("report STIX download failed")
+    try:
+        stix_doc = json.loads(stix_bytes.decode())
+    except json.JSONDecodeError as exc:
+        raise SystemExit("report STIX artifact is not valid JSON") from exc
+    if stix_doc.get("type") != "bundle":
+        raise SystemExit("report STIX artifact is not a STIX bundle")
+
     print(
         f"smoke ok: email={email} hypothesis={hid} integration_queued={len(triage)} "
-        f"audit_events={len(audits)} navigator_techniques={len(techniques)}"
+        f"audit_events={len(audits)} navigator_techniques={len(techniques)} "
+        f"hunt={hunt_id} report_job={report_job_id}"
     )
 
 

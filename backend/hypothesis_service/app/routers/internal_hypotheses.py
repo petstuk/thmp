@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit_emit import emit_audit
 from app.deps import get_db, require_internal_token
 from app.models import Hypothesis
+from app.search import index_hypothesis
 from app.schemas import InternalHypothesisIngestItem, InternalIngestItemResult
 
 router = APIRouter(prefix="/internal/hypotheses", tags=["internal"])
@@ -35,11 +36,15 @@ async def ingest_hypothesis_item(
     merged_ref = dict(body.source_ref or {})
     merged_ref["ingest"] = {"dedupe_key": body.dedupe_key, "connector_id": body.connector_id}
 
+    ingest_conf = 0.0
+    if body.metadata and isinstance(body.metadata.get("ingest_confidence"), (int, float)):
+        ingest_conf = float(body.metadata["ingest_confidence"])
+
     h = Hypothesis(
         title=body.title,
         description=body.description,
         status="draft",
-        confidence_score=0.0,
+        confidence_score=ingest_conf,
         severity=body.severity,
         owner_id=body.created_by,
         workspace_id=body.workspace_id,
@@ -62,4 +67,5 @@ async def ingest_hypothesis_item(
         workspace_id=body.workspace_id,
         diff={"title": h.title, "status": h.status, "connector_id": body.connector_id},
     )
+    index_hypothesis(h, workspace_id=str(body.workspace_id))
     return InternalIngestItemResult(id=h.id, created=True)

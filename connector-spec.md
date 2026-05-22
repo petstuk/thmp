@@ -3,6 +3,8 @@
 **Version:** 1.0.0  
 **Status:** Normative for first-party connectors and third-party contributions.
 
+**Freeze (Phase 3–4):** Revision **1.0.0** is frozen for this work package: only **additive** connector fields and backward-compatible platform hooks unless the spec version is bumped.
+
 This specification defines how external systems integrate with the Threat Hypothesis Management Platform (THMP) via **connector adapters**. Each connector is a Python package that implements the interfaces below and transforms external data into THMP’s normalised schemas.
 
 ## Goals

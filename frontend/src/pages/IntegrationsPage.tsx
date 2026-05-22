@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { PageHeader } from '@/components/thmp/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { apiFetch, getWorkspaceId } from '@/api'
+import { JsonSchemaObjectForm } from '@/components/JsonSchemaObjectForm'
+import { ApiError, apiFetch, getWorkspaceId } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
+import { CONNECTOR_CONFIG_SCHEMAS } from '@/lib/connectorConfigSchemas'
 
 type IntegrationRow = {
   id: string
@@ -21,14 +24,44 @@ type IntegrationRow = {
 
 const MANAGE_ROLES = new Set(['admin', 'manager'])
 
+function integrationsErrorMessage(err: unknown, context: 'load' | 'create' | 'save'): string {
+  const base =
+    err instanceof ApiError
+      ? err.message
+      : err instanceof Error
+        ? err.message
+        : context === 'load'
+          ? 'Failed to load'
+          : context === 'create'
+            ? 'Create failed'
+            : 'Update failed'
+  if (err instanceof ApiError && err.status === 404) {
+    return `${base}\n\nIntegrations are provided by the user service. Keep VITE_API_BASE_URL empty (Compose default) so /api is proxied to Traefik on port 80, or set it to the user service origin (e.g. http://127.0.0.1:8001). If it points only at the hypothesis service (port 8002), /api/v1/integrations returns 404. After changing .env, restart the Vite dev server.`
+  }
+  return base
+}
+
+function parseConfigJson(raw: string): Record<string, unknown> | null {
+  try {
+    const v = JSON.parse(raw) as unknown
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
 export function IntegrationsPage() {
   const { user } = useAuth()
   const [items, setItems] = useState<IntegrationRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [createConnectorId, setCreateConnectorId] = useState('example_webhook')
   const [createName, setCreateName] = useState('')
   const [createConfigJson, setCreateConfigJson] = useState('{}')
+  const [createSecret, setCreateSecret] = useState('')
   const [edits, setEdits] = useState<Record<string, { configJson: string; is_enabled: boolean }>>({})
+  const [rowSecrets, setRowSecrets] = useState<Record<string, string>>({})
+  const [testingId, setTestingId] = useState<string | null>(null)
 
   const workspaceId = getWorkspaceId() || ''
   const workspaceRole = user?.workspaces.find((w) => w.id === workspaceId)?.role ?? null
@@ -49,12 +82,13 @@ export function IntegrationsPage() {
       }
       setEdits(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load')
+      setError(integrationsErrorMessage(err, 'load'))
     }
   }, [canManage])
 
   useEffect(() => {
     if (user?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- default JSON when user loads
       setCreateConfigJson(JSON.stringify({ ingest_actor_user_id: user.id }, null, 2))
     }
   }, [user?.id])
@@ -67,11 +101,10 @@ export function IntegrationsPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    let config: Record<string, unknown>
-    try {
-      config = JSON.parse(createConfigJson) as Record<string, unknown>
-    } catch {
-      setError('Create config must be valid JSON')
+    setInfo(null)
+    const config = parseConfigJson(createConfigJson)
+    if (!config) {
+      setError('Create config must be valid JSON object')
       return
     }
     try {
@@ -81,39 +114,66 @@ export function IntegrationsPage() {
           connector_id: createConnectorId.trim(),
           name: createName.trim() || null,
           config,
+          secret_ref: createSecret.trim() || null,
         }),
       })
       setCreateName('')
+      setCreateSecret('')
+      setInfo('Integration created.')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed')
+      setError(integrationsErrorMessage(err, 'create'))
     }
   }
 
   async function saveRow(id: string) {
     setError(null)
+    setInfo(null)
     const ed = edits[id]
     if (!ed) return
-    let config: Record<string, unknown> | undefined
-    try {
-      config = JSON.parse(ed.configJson) as Record<string, unknown>
-    } catch {
-      setError('Config must be valid JSON')
+    const config = parseConfigJson(ed.configJson)
+    if (!config) {
+      setError('Config must be valid JSON object')
       return
     }
+    const sec = rowSecrets[id]?.trim()
     try {
       await apiFetch(`/api/v1/integrations/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           config,
           is_enabled: ed.is_enabled,
+          ...(sec ? { secret_ref: sec } : {}),
         }),
       })
+      setRowSecrets((prev) => {
+        const n = { ...prev }
+        delete n[id]
+        return n
+      })
+      setInfo('Integration saved.')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed')
+      setError(integrationsErrorMessage(err, 'save'))
     }
   }
+
+  async function testRow(id: string) {
+    setError(null)
+    setInfo(null)
+    setTestingId(id)
+    try {
+      await apiFetch(`/api/v1/integrations/${id}/test`, { method: 'POST', body: '{}' })
+      setInfo('Test connection: OK (connector health_check passed).')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Test connection failed')
+    } finally {
+      setTestingId(null)
+    }
+  }
+
+  const createSchema = CONNECTOR_CONFIG_SCHEMAS[createConnectorId]
+  const createParsed = parseConfigJson(createConfigJson) ?? {}
 
   if (!user) {
     return (
@@ -127,13 +187,10 @@ export function IntegrationsPage() {
 
   return (
     <AppShell workspaceRole={workspaceRole} onWorkspaceChange={() => void load()}>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">Integrations</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure connector IDs and non-secret JSON for your workspace.{' '}
-          <code className="text-xs">secret_ref</code> is masked in API responses after save.
-        </p>
-      </header>
+      <PageHeader
+        title="Integrations"
+        subtitle="Configure connector IDs and JSON config; keep tokens in secret_ref and validate with health_check."
+      />
 
       {!canManage ? (
         <p className="text-sm text-muted-foreground">
@@ -141,7 +198,16 @@ export function IntegrationsPage() {
         </p>
       ) : null}
 
-      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+      {info ? (
+        <p className="mb-4 text-sm text-emerald-700 dark:text-emerald-400" role="status">
+          {info}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mb-4 text-sm text-destructive whitespace-pre-wrap" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {canManage ? (
         <Card className="mb-8">
@@ -165,6 +231,17 @@ export function IntegrationsPage() {
                   <Input id="int-name" value={createName} onChange={(e) => setCreateName(e.target.value)} />
                 </div>
               </div>
+              {createSchema ? (
+                <div className="space-y-2">
+                  <Label>Config (form)</Label>
+                  <JsonSchemaObjectForm
+                    schema={createSchema}
+                    value={createParsed}
+                    onChange={(obj) => setCreateConfigJson(JSON.stringify(obj, null, 2))}
+                    idPrefix="create"
+                  />
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="int-config">Config JSON</Label>
                 <Textarea
@@ -176,6 +253,17 @@ export function IntegrationsPage() {
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="int-secret">Secret / token (optional)</Label>
+                <Input
+                  id="int-secret"
+                  type="password"
+                  autoComplete="off"
+                  value={createSecret}
+                  onChange={(e) => setCreateSecret(e.target.value)}
+                  placeholder="Stored as encrypted secret_ref"
+                />
+              </div>
               <Button type="submit">Create</Button>
             </form>
           </CardContent>
@@ -184,59 +272,110 @@ export function IntegrationsPage() {
 
       {canManage ? (
         <ul className="space-y-6">
-          {items.map((row) => (
-            <li key={row.id}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    {row.connector_id}
-                    {row.name ? ` — ${row.name}` : ''}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Enabled: {row.is_enabled ? 'yes' : 'no'} · secret_ref: {row.secret_ref ?? '—'}
-                  </p>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id={`en-${row.id}`}
-                      checked={edits[row.id]?.is_enabled ?? row.is_enabled}
+          {items.map((row) => {
+            const sch = CONNECTOR_CONFIG_SCHEMAS[row.connector_id]
+            const rowParsed =
+              parseConfigJson(edits[row.id]?.configJson ?? JSON.stringify(row.config ?? {}, null, 2)) ?? {}
+            const secretLabel =
+              row.secret_ref === '***' ? 'stored (update below to replace)' : row.secret_ref ?? '—'
+            return (
+              <li key={row.id}>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      {row.connector_id}
+                      {row.name ? ` — ${row.name}` : ''}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Enabled: {row.is_enabled ? 'yes' : 'no'} · secret_ref: {secretLabel}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`en-${row.id}`}
+                        checked={edits[row.id]?.is_enabled ?? row.is_enabled}
+                        onChange={(e) =>
+                          setEdits((prev) => ({
+                            ...prev,
+                            [row.id]: {
+                              configJson:
+                                prev[row.id]?.configJson ?? JSON.stringify(row.config ?? {}, null, 2),
+                              is_enabled: e.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      <Label htmlFor={`en-${row.id}`} className="font-normal">
+                        Enabled
+                      </Label>
+                    </div>
+                    {sch ? (
+                      <div className="space-y-2">
+                        <Label>Config (form)</Label>
+                        <JsonSchemaObjectForm
+                          schema={sch}
+                          value={rowParsed}
+                          onChange={(obj) =>
+                            setEdits((prev) => ({
+                              ...prev,
+                              [row.id]: {
+                                configJson: JSON.stringify(obj, null, 2),
+                                is_enabled: prev[row.id]?.is_enabled ?? row.is_enabled,
+                              },
+                            }))
+                          }
+                          idPrefix={`row-${row.id}`}
+                        />
+                      </div>
+                    ) : null}
+                    <Textarea
+                      className="font-mono text-sm"
+                      rows={8}
+                      value={edits[row.id]?.configJson ?? JSON.stringify(row.config ?? {}, null, 2)}
                       onChange={(e) =>
                         setEdits((prev) => ({
                           ...prev,
                           [row.id]: {
-                            configJson: prev[row.id]?.configJson ?? JSON.stringify(row.config ?? {}, null, 2),
-                            is_enabled: e.target.checked,
+                            configJson: e.target.value,
+                            is_enabled: prev[row.id]?.is_enabled ?? row.is_enabled,
                           },
                         }))
                       }
                     />
-                    <Label htmlFor={`en-${row.id}`} className="font-normal">
-                      Enabled
-                    </Label>
-                  </div>
-                  <Textarea
-                    className="font-mono text-sm"
-                    rows={8}
-                    value={edits[row.id]?.configJson ?? JSON.stringify(row.config ?? {}, null, 2)}
-                    onChange={(e) =>
-                      setEdits((prev) => ({
-                        ...prev,
-                        [row.id]: {
-                          configJson: e.target.value,
-                          is_enabled: prev[row.id]?.is_enabled ?? row.is_enabled,
-                        },
-                      }))
-                    }
-                  />
-                  <Button type="button" size="sm" variant="secondary" onClick={() => void saveRow(row.id)}>
-                    Save changes
-                  </Button>
-                </CardContent>
-              </Card>
-            </li>
-          ))}
+                    <div className="space-y-1">
+                      <Label htmlFor={`sec-${row.id}`}>New secret (optional)</Label>
+                      <Input
+                        id={`sec-${row.id}`}
+                        type="password"
+                        autoComplete="off"
+                        value={rowSecrets[row.id] ?? ''}
+                        onChange={(e) =>
+                          setRowSecrets((prev) => ({ ...prev, [row.id]: e.target.value }))
+                        }
+                        placeholder="Leave blank to keep existing secret"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="secondary" onClick={() => void saveRow(row.id)}>
+                        Save changes
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={testingId === row.id}
+                        onClick={() => void testRow(row.id)}
+                      >
+                        {testingId === row.id ? 'Testing…' : 'Test connection'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
 

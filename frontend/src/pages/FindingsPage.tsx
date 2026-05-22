@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
-import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/thmp/PageHeader'
+import { ThmpCard } from '@/components/thmp/ThmpCard'
 import { apiFetch, getWorkspaceId } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
 
@@ -58,20 +59,20 @@ export function FindingsPage() {
 
   return (
     <AppShell workspaceRole={role} onWorkspaceChange={() => void load()}>
-      <h1 className="mb-6 text-2xl font-semibold">Findings</h1>
+      <PageHeader title="Findings" subtitle="Outcome records captured from hunt execution." />
       {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
       <ul className="space-y-3 text-left">
         {items.map((f) => (
           <li key={f.id}>
-            <Card>
-              <CardContent className="py-4">
+            <ThmpCard>
+              <div>
                 <div className="font-medium text-foreground">{f.title}</div>
                 <div className="text-xs text-muted-foreground">
                   {f.outcome} · hunt {f.hunt_id.slice(0, 8)}… ·{' '}
                   {new Date(f.created_at).toLocaleString()}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </ThmpCard>
           </li>
         ))}
       </ul>

@@ -97,6 +97,50 @@ class IntegrationConfig(Base):
     )
 
 
+class IdentityProviderConfig(Base):
+    """Per-workspace OIDC / OAuth2 identity provider configuration."""
+
+    __tablename__ = "idp_configs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slug", name="uq_idp_workspace_slug"),
+        {"schema": "auth"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("auth.workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    issuer_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    client_secret_enc: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    default_role: Mapped[str] = mapped_column(String(64), nullable=False, default="analyst")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OidcUserLink(Base):
+    """Maps a (issuer, subject) OIDC claim pair to a THMP user for JIT provisioning."""
+
+    __tablename__ = "oidc_user_links"
+    __table_args__ = (
+        UniqueConstraint("issuer_url", "subject", name="uq_oidc_user_issuer_sub"),
+        {"schema": "auth"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
+    )
+    issuer_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
     __table_args__ = {"schema": "auth"}

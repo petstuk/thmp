@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thmp-connector-elastic-scm"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "thmp-cdk",
+  "pydantic>=2.0",
+  "httpx>=0.27",
+]
+
+[project.entry-points."thmp.connectors"]
+elastic_scm = "elastic_scm.adapter:ElasticScmAdapter"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["elastic_scm*"]

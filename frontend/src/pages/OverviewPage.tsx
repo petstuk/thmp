@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { PageHeader } from '@/components/thmp/PageHeader'
+import { ThmpCard } from '@/components/thmp/ThmpCard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { StatusBadge } from '@/components/ThreatBadges'
 import { apiFetch, getWorkspaceId } from '@/api'
 import { useAuth } from '@/auth/AuthContext'
+import { cn } from '@/lib/utils'
 
 type HypothesisRow = {
   id: string
@@ -89,6 +93,17 @@ export function OverviewPage() {
     return hypotheses.slice(0, 5)
   }, [hypotheses])
 
+  const showEmptyGuidance = useMemo(() => {
+    if (hypotheses === null || loadError) return false
+    return (
+      hypotheses.length === 0 &&
+      hunts !== null &&
+      hunts.length === 0 &&
+      findings !== null &&
+      findings.length === 0
+    )
+  }, [hypotheses, hunts, findings, loadError])
+
   if (!user) {
     return (
       <div className="px-4 py-16 text-center">
@@ -99,109 +114,162 @@ export function OverviewPage() {
     )
   }
 
+  const statusCard =
+    statusCounts && Object.keys(statusCounts).length > 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Hypotheses by status</CardTitle>
+          <CardDescription>From the current workspace list payload.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="flex flex-wrap gap-3 text-sm">
+            {Object.entries(statusCounts)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, v]) => (
+                <li key={k} className="rounded-md bg-muted px-3 py-1">
+                  <StatusBadge value={k} className="mr-1 align-middle" />
+                  <span className="text-muted-foreground">({v})</span>
+                </li>
+              ))}
+          </ul>
+        </CardContent>
+      </Card>
+    ) : null
+
+  const recentCard =
+    recentHypotheses.length > 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Recent hypotheses</CardTitle>
+          <CardDescription>First entries from the workspace list (API order).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2 text-left">
+            {recentHypotheses.map((h) => (
+              <li key={h.id}>
+                <Link
+                  to={`/hypotheses/${h.id}`}
+                  className="font-medium text-foreground hover:text-primary"
+                >
+                  {h.title}
+                </Link>
+                <span className="ml-1 align-middle">
+                  <StatusBadge value={h.status} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    ) : null
+
+  const hasInsightColumn = Boolean(statusCard || recentCard)
+
   return (
     <AppShell workspaceRole={role} onWorkspaceChange={() => void load()}>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-semibold">Overview</h1>
-          <p className="text-sm text-muted-foreground">{user.email}</p>
-        </div>
+      <div
+        className={cn(
+          'space-y-8',
+          hasInsightColumn && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-8 lg:space-y-0',
+        )}
+      >
+        <div className="space-y-8">
+          <PageHeader title="Dashboard" subtitle={`${user.email} · Falcon Workspace`} className="mb-0" />
 
-        {loadError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {loadError}
-          </p>
-        ) : null}
+          {loadError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {loadError}
+            </p>
+          ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-3xl tabular-nums">
-                {hypotheses === null ? '—' : hypotheses.length}
-              </CardTitle>
-              <CardDescription>Hypotheses in workspace</CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-3xl tabular-nums">{hunts === null ? '—' : hunts.length}</CardTitle>
-              <CardDescription>Hunts</CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-3xl tabular-nums">
-                {findings === null ? '—' : findings.length}
-              </CardTitle>
-              <CardDescription>Findings</CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium leading-snug">Evidence</CardTitle>
-              <CardDescription>
-                Stored per hypothesis — open Hypotheses or Evidence hub to review.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+            <ThmpCard>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-3xl tabular-nums">
+                  {hypotheses === null ? '—' : hypotheses.length}
+                </CardTitle>
+                <CardDescription>Hypotheses in workspace</CardDescription>
+              </CardHeader>
+            </ThmpCard>
+            <ThmpCard>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-3xl tabular-nums">
+                  {hunts === null ? '—' : hunts.length}
+                </CardTitle>
+                <CardDescription>Hunts</CardDescription>
+              </CardHeader>
+            </ThmpCard>
+            <ThmpCard>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-3xl tabular-nums">
+                  {findings === null ? '—' : findings.length}
+                </CardTitle>
+                <CardDescription>Findings</CardDescription>
+              </CardHeader>
+            </ThmpCard>
+            <ThmpCard className="flex flex-col">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-3xl tabular-nums text-muted-foreground">—</CardTitle>
+                <CardDescription>Evidence (per hypothesis)</CardDescription>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  No workspace-wide total without an aggregate API. Open a hypothesis or use the hub
+                  below.
+                </p>
+              </CardHeader>
+              <CardFooter className="pt-0">
+                <Button variant="link" className="h-auto px-0" asChild>
+                  <Link to="/evidence">Evidence hub</Link>
+                </Button>
+              </CardFooter>
+            </ThmpCard>
+          </div>
 
-        {statusCounts && Object.keys(statusCounts).length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Hypotheses by status</CardTitle>
-              <CardDescription>From the current workspace list payload.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="flex flex-wrap gap-3 text-sm">
-                {Object.entries(statusCounts)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([k, v]) => (
-                    <li key={k} className="rounded-md bg-muted px-3 py-1">
-                      <span className="font-medium text-foreground">{k}</span>{' '}
-                      <span className="text-muted-foreground">({v})</span>
-                    </li>
-                  ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ) : null}
+          <div className="flex flex-wrap gap-3">
+            <Button asChild>
+              <Link to="/hypotheses">Manage hypotheses</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/hunts">View hunts</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/findings">View findings</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/evidence">Evidence hub</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/reporting">Reporting</Link>
+            </Button>
+          </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button asChild>
-            <Link to="/hypotheses">Manage hypotheses</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/hunts">View hunts</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/findings">View findings</Link>
-          </Button>
-        </div>
-
-        {recentHypotheses.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Recent hypotheses</CardTitle>
-              <CardDescription>First entries from the workspace list (API order).</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-left">
-                {recentHypotheses.map((h) => (
-                  <li key={h.id}>
-                    <Link
-                      to={`/hypotheses/${h.id}`}
-                      className="font-medium text-foreground hover:text-primary"
-                    >
-                      {h.title}
-                    </Link>
-                    <span className="text-xs text-muted-foreground"> · {h.status}</span>
+          {showEmptyGuidance ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Next steps</CardTitle>
+                <CardDescription>This workspace has no hypotheses, hunts, or findings yet.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                <ul className="list-inside list-disc space-y-1">
+                  <li>
+                    <Link to="/hypotheses" className="text-primary underline-offset-4 hover:underline">
+                      Create a hypothesis
+                    </Link>{' '}
+                    to drive hunts and evidence.
                   </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ) : null}
+                  <li>
+                    If technique search is empty, ensure the ATT&CK catalogue is synced (banner above when
+                    needed).
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+
+        <div className="space-y-8">
+          {statusCard}
+          {recentCard}
+        </div>
       </div>
     </AppShell>
   )

@@ -38,4 +38,4 @@ Operators should follow the deployment guides (when published) for TLS, secrets 
 
 ### Internal APIs and ingestion
 
-Service-to-service calls use **`THMP_INTERNAL_API_SECRET`** (`X-Internal-Token`). Treat it like a bearer secret: restrict network paths, rotate regularly, and **do not** expose internal or ingestion URLs to untrusted clients. Public webhooks should validate **vendor-specific** signatures (or mTLS) at the edge before invoking ingestion; see [docs/adr/0006-ingestion-auth-and-dedupe.md](docs/adr/0006-ingestion-auth-and-dedupe.md).
+Service-to-service calls use **`THMP_INTERNAL_API_SECRET`** (`X-Internal-Token`). Treat it like a bearer secret: restrict network paths, rotate regularly, and **do not** expose internal or ingestion URLs to untrusted clients. Public webhooks should validate **vendor-specific** signatures (or mTLS) at the edge before invoking ingestion; see [docs/adr/0008-ingestion-auth-and-dedupe.md](docs/adr/0008-ingestion-auth-and-dedupe.md).

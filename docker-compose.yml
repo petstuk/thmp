@@ -34,6 +34,35 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-thmp-minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-thmp-minio-secret}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD:-LocalDev!Search9}
+      - plugins.security.disabled=true
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
   user-service:
     build:
       context: ./backend
@@ -43,6 +72,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
       ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
       AUDIT_SERVICE_URL: http://audit-service:8000
+      INGESTION_SERVICE_URL: http://ingestion-service:8000
     ports:
       - "8001:8000"
     healthcheck:
@@ -128,6 +158,12 @@ services:
       ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
       AUDIT_SERVICE_URL: http://audit-service:8000
       ATTACK_SERVICE_URL: http://attack-service:8000
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-thmp-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-thmp-minio-secret}
+      S3_BUCKET_EVIDENCE: ${S3_BUCKET_EVIDENCE:-thmp-evidence}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      OPENSEARCH_URL: http://opensearch:9200
     ports:
       - "8002:8000"
     healthcheck:
@@ -152,6 +188,10 @@ services:
         condition: service_started
       attack-service:
         condition: service_started
+      minio:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
     labels:
       - traefik.enable=true
       - traefik.http.services.thmp-hypothesis-svc.loadbalancer.server.port=8000
@@ -164,6 +204,160 @@ services:
       - traefik.http.routers.thmp-hypothesis-evidence.rule=PathPrefix(`/api/v1/evidence`)
       - traefik.http.routers.thmp-hypothesis-evidence.entrypoints=web
       - traefik.http.routers.thmp-hypothesis-evidence.service=thmp-hypothesis-svc
+      - traefik.http.routers.thmp-hypothesis-workspace.rule=PathPrefix(`/api/v1/workspace`)
+      - traefik.http.routers.thmp-hypothesis-workspace.entrypoints=web
+      - traefik.http.routers.thmp-hypothesis-workspace.service=thmp-hypothesis-svc
+      - traefik.http.routers.thmp-hypothesis-kanban.rule=PathPrefix(`/api/v1/kanban`)
+      - traefik.http.routers.thmp-hypothesis-kanban.entrypoints=web
+      - traefik.http.routers.thmp-hypothesis-kanban.service=thmp-hypothesis-svc
+      - traefik.http.routers.thmp-hypothesis-notifications.rule=PathPrefix(`/api/v1/notifications`)
+      - traefik.http.routers.thmp-hypothesis-notifications.entrypoints=web
+      - traefik.http.routers.thmp-hypothesis-notifications.service=thmp-hypothesis-svc
+      - traefik.http.routers.thmp-hypothesis-search.rule=PathPrefix(`/api/v1/search`)
+      - traefik.http.routers.thmp-hypothesis-search.entrypoints=web
+      - traefik.http.routers.thmp-hypothesis-search.service=thmp-hypothesis-svc
+
+  attack-suggest-service:
+    # Optional ML sidecar (large torch/sentence-transformers footprint).
+    # Start explicitly when needed: docker compose --profile ml up -d attack-suggest-service
+    profiles: ["ml"]
+    build:
+      context: ./backend
+      dockerfile: attack_suggest_service/Dockerfile
+    env_file: .env
+    environment:
+      ATTACK_SERVICE_URL: http://attack-service:8000
+    ports:
+      - "8006:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    volumes:
+      - ./backend/attack_suggest_service:/app/attack_suggest_service
+      - suggest_model_cache:/root/.cache
+    depends_on:
+      attack-service:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.thmp-suggest-svc.loadbalancer.server.port=8000
+      - traefik.http.routers.thmp-suggest.rule=PathPrefix(`/api/v1/attack/suggest`)
+      - traefik.http.routers.thmp-suggest.entrypoints=web
+      - traefik.http.routers.thmp-suggest.service=thmp-suggest-svc
+
+  reporting-service:
+    build:
+      context: ./backend
+      dockerfile: reporting_service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      ALEMBIC_SYNC_URL: postgresql://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      HYPOTHESIS_SERVICE_URL: http://hypothesis-service:8000
+      ATTACK_SERVICE_URL: http://attack-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      AUDIT_SERVICE_URL: http://audit-service:8000
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-thmp-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-thmp-minio-secret}
+      S3_BUCKET_REPORTS: ${S3_BUCKET_REPORTS:-thmp-reports}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      THMP_PUBLIC_BASE_URL: ${THMP_PUBLIC_BASE_URL:-http://localhost:5173}
+    ports:
+      - "8007:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/reporting_service:/app/reporting_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hypothesis-service:
+        condition: service_healthy
+      attack-service:
+        condition: service_healthy
+      audit-service:
+        condition: service_started
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.thmp-reporting-svc.loadbalancer.server.port=8000
+      - traefik.http.routers.thmp-reporting.rule=PathPrefix(`/api/v1/reports`)
+      - traefik.http.routers.thmp-reporting.entrypoints=web
+      - traefik.http.routers.thmp-reporting.service=thmp-reporting-svc
+
+  reporting-worker:
+    build:
+      context: ./backend
+      dockerfile: reporting_service/Dockerfile
+    command: celery -A app.tasks worker --loglevel=INFO
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      HYPOTHESIS_SERVICE_URL: http://hypothesis-service:8000
+      ATTACK_SERVICE_URL: http://attack-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      AUDIT_SERVICE_URL: http://audit-service:8000
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-thmp-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-thmp-minio-secret}
+      S3_BUCKET_REPORTS: ${S3_BUCKET_REPORTS:-thmp-reports}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      CELERY_BROKER_URL: redis://redis:6379/0
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/reporting_service:/app/reporting_service
+    depends_on:
+      reporting-service:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  reporting-beat:
+    build:
+      context: ./backend
+      dockerfile: reporting_service/Dockerfile
+    command: celery -A app.tasks beat --loglevel=INFO
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thmp}:${POSTGRES_PASSWORD:-thmp}@postgres:5432/${POSTGRES_DB:-thmp}
+      HYPOTHESIS_SERVICE_URL: http://hypothesis-service:8000
+      ATTACK_SERVICE_URL: http://attack-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      AUDIT_SERVICE_URL: http://audit-service:8000
+      CELERY_BROKER_URL: redis://redis:6379/0
+    volumes:
+      - ./backend/thmp_common:/app/thmp_common
+      - ./backend/reporting_service:/app/reporting_service
+    depends_on:
+      reporting-service:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   ingestion-service:
     build:
@@ -191,6 +385,24 @@ services:
       - ./backend/thmp_common:/app/thmp_common
       - ./backend/thmp_cdk:/app/thmp_cdk
       - ./connectors/example_webhook:/app/connectors/example_webhook
+      - ./connectors/elastic_scm:/app/connectors/elastic_scm
+      - ./connectors/stix_taxii:/app/connectors/stix_taxii
+      - ./connectors/misp:/app/connectors/misp
+      - ./connectors/opencti:/app/connectors/opencti
+      - ./connectors/splunk:/app/connectors/splunk
+      - ./connectors/sentinel:/app/connectors/sentinel
+      - ./connectors/elastic_siem:/app/connectors/elastic_siem
+      - ./connectors/qradar:/app/connectors/qradar
+      - ./connectors/tenable:/app/connectors/tenable
+      - ./connectors/qualys:/app/connectors/qualys
+      - ./connectors/xsoar:/app/connectors/xsoar
+      - ./connectors/splunk_soar:/app/connectors/splunk_soar
+      - ./connectors/jira:/app/connectors/jira
+      - ./connectors/servicenow:/app/connectors/servicenow
+      - ./connectors/slack:/app/connectors/slack
+      - ./connectors/teams:/app/connectors/teams
+      - ./connectors/pagerduty:/app/connectors/pagerduty
+      - ./connectors/email_notify:/app/connectors/email_notify
       - ./backend/ingestion_service:/app/ingestion_service
     depends_on:
       user-service:
@@ -236,20 +448,36 @@ services:
   frontend:
     image: node:20-alpine
     working_dir: /app
+    # node_modules is a named volume (below) so npm ci is not racing the host bind-mount — avoids ENOTEMPTY on rmdir.
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     env_file: .env
     environment:
       # Same-origin /api → Vite proxies to Traefik (avoids browser → :80 issues on some hosts).
       VITE_API_BASE_URL: ""
       DEV_PROXY_TARGET: http://traefik:80
+      # Integration CRUD must hit user-service; Vite router sends /api/v1/integrations here (see vite.config.ts).
+      VITE_USER_SERVICE_PROXY: http://user-service:8000
     volumes:
       - ./frontend:/app
+      - thmp_frontend_node_modules:/app/node_modules
     ports:
       - "5173:5173"
+    # Hypotheses/hunts/evidence routes are served by hypothesis-service via Traefik; without it, /api/v1/hypotheses returns Traefik 404.
     depends_on:
-      - traefik
-      - user-service
-      - attack-service
+      traefik:
+        condition: service_started
+      user-service:
+        condition: service_healthy
+      attack-service:
+        condition: service_healthy
+      hypothesis-service:
+        condition: service_healthy
+      reporting-service:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  thmp_frontend_node_modules:
+  minio_data:
+  opensearch_data:
+  suggest_model_cache:

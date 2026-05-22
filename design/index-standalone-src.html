@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>THMP · Design System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    html,body{margin:0;padding:0;height:100%;background:#f0eee9;font-family:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    *{box-sizing:border-box}
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#0a0c10">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#0a0c10" />
+      <g transform="translate(600,360)">
+        <path d="M-140 110 L0 -140 L140 110 Z" fill="rgba(122,183,255,0.12)" stroke="#7AB7FF" stroke-width="6" stroke-linejoin="round" />
+        <circle cx="0" cy="50" r="14" fill="#7AB7FF" />
+      </g>
+      <g transform="translate(600,560)" font-family="ui-monospace,monospace" text-anchor="middle">
+        <text fill="#F2F4F8" font-size="38" font-weight="600" letter-spacing="0.04em">THMP</text>
+        <text fill="#8A93A3" font-size="18" y="36" letter-spacing="0.16em">DESIGN&#160;SYSTEM</text>
+      </g>
+    </svg>
+  </template>
+  <div id="root"></div>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="src/theme.jsx"></script>
+  <script type="text/babel" src="src/primitives.jsx"></script>
+  <script type="text/babel" src="src/foundations.jsx"></script>
+  <script type="text/babel" src="src/ia.jsx"></script>
+  <script type="text/babel" src="src/journeys.jsx"></script>
+  <script type="text/babel" src="src/wireframes.jsx"></script>
+  <script type="text/babel" src="src/hifi-hunt.jsx"></script>
+  <script type="text/babel" src="src/hifi-attack.jsx"></script>
+  <script type="text/babel" src="src/specs.jsx"></script>
+  <script type="text/babel" src="src/app.jsx"></script>
+</body>
+</html>

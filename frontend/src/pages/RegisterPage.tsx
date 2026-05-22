@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '../auth/AuthContext'
+import { appDisplayName } from '@/lib/branding'
 
 export function RegisterPage() {
   const { register } = useAuth()
@@ -32,11 +33,11 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
+    <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-4 py-12">
       <Card>
         <CardHeader>
-          <CardTitle>Create account</CardTitle>
-          <CardDescription>Register a user and default workspace.</CardDescription>
+          <CardTitle className="text-[22px] tracking-tight">Create account</CardTitle>
+          <CardDescription>{appDisplayName} user registration and default workspace setup.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4 text-left">

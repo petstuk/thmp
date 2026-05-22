@@ -146,3 +146,40 @@ async def list_tactics(
         )
         for r in rows
     ]
+
+
+@router.get("/catalog/tactics")
+async def catalog_tactics_with_techniques(
+    ctx: tuple = Depends(get_workspace_context),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return all tactics with their techniques for the Navigator heatmap view."""
+    _ = ctx
+    tactics = (await db.execute(select(Tactic).order_by(Tactic.name))).scalars().all()
+    result = []
+    for tactic in tactics:
+        techs_q = (
+            select(Technique)
+            .join(TechniqueTactic, TechniqueTactic.technique_id == Technique.id)
+            .where(TechniqueTactic.tactic_id == tactic.id)
+            .order_by(Technique.mitre_id)
+        )
+        techs = (await db.execute(techs_q)).scalars().unique().all()
+        result.append(
+            {
+                "id": str(tactic.id),
+                "name": tactic.name,
+                "short_name": tactic.short_name,
+                "techniques": [
+                    {
+                        "id": str(t.id),
+                        "mitre_id": t.mitre_id,
+                        "name": t.name,
+                        "is_subtechnique": t.is_subtechnique,
+                        "parent_technique_id": str(t.parent_technique_id) if t.parent_technique_id else None,
+                    }
+                    for t in techs
+                ],
+            }
+        )
+    return result
